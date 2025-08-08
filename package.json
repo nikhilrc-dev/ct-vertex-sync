@@ -1,0 +1,22 @@
+{
+  "name": "connect-app",
+  "version": "1.0.0",
+  "description": "Commercetools to Vertex AI Connect Application",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo 'No tests configured'",
+    "start": "echo 'Use connect deploy to deploy the application'"
+  },
+  "dependencies": {
+    "@commercetools/sdk-client": "^4.0.1",
+    "@commercetools/sdk-middleware-auth": "^8.0.1",
+    "@commercetools/sdk-middleware-http": "^8.0.1",
+    "@commercetools/sdk-middleware-user-agent": "^4.0.1",
+    "@commercetools/sdk-types": "^1.0.1",
+    "dotenv": "^17.2.1",
+    "google-auth-library": "^9.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

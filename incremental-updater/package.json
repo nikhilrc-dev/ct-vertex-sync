@@ -1,0 +1,34 @@
+{
+  "name": "incremental-updater",
+  "version": "1.0.0",
+  "description": "Incremental updater application for commercetools to Vertex sync",
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "test": "jest",
+    "dev": "nodemon src/index.js",
+    "connector:post-deploy": "node src/scripts/post-deploy.js",
+    "connector:pre-undeploy": "node src/scripts/pre-undeploy.js"
+  },
+  "dependencies": {
+    "@commercetools/sdk-client": "^3.0.0",
+    "@commercetools/sdk-middleware-auth": "^6.0.0",
+    "@commercetools/sdk-middleware-http": "^6.0.0",
+    "@commercetools/sdk-middleware-user-agent": "^2.0.0",
+    "@commercetools/api-request-builder": "^5.0.0",
+    "@google-cloud/aiplatform": "^4.0.0",
+    "google-auth-library": "^9.0.0",
+    "express": "^4.18.0",
+    "cors": "^2.8.5",
+    "helmet": "^7.0.0",
+    "dotenv": "^16.0.0"
+  },
+  "devDependencies": {
+    "jest": "^29.0.0",
+    "supertest": "^6.0.0",
+    "nodemon": "^3.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+} 

@@ -1,0 +1,42 @@
+deployAs:
+  - name: full-export
+    applicationType: service
+    endpoint: /fullSync
+    scripts:
+      postDeploy: npm install
+    configuration:
+      securedConfiguration:
+        - key: CTP_PROJECT_KEY
+          description: commercetools project key
+        - key: CTP_CLIENT_ID
+          description: commercetools client ID
+        - key: CTP_CLIENT_SECRET
+          description: commercetools client secret
+        - key: CTP_SCOPE
+          description: commercetools client scope
+        - key: CTP_REGION
+          description: Region of commercetools project
+        - key: VERTEX_CONFIG
+          description: Escaped JSON object including credentials to Vertex platform and other settings
+  - name: incremental-updater
+    applicationType: event
+    endpoint: /deltaSync
+    scripts:
+      postDeploy: npm install && npm run connector:post-deploy
+      preUndeploy: npm install && npm run connector:pre-undeploy
+    configuration:
+      securedConfiguration:
+        - key: CTP_STORE_KEY
+          description: Unique key of commercetools Store
+        - key: CTP_PROJECT_KEY
+          description: commercetools project key
+        - key: CTP_CLIENT_ID
+          description: commercetools client ID
+        - key: CTP_CLIENT_SECRET
+          description: commercetools client secret
+        - key: CTP_SCOPE
+          description: commercetools client scope
+        - key: CTP_REGION
+          description: Region of commercetools project
+        - key: VERTEX_CONFIG
+          description: Escaped JSON object including credentials to Vertex platform and other settings 
