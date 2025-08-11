@@ -1,11 +1,14 @@
 const { GoogleAuth } = require('google-auth-library');
 
+/**
+ * VertexService - Handles communication with Google Cloud Vertex AI Retail API
+ */
 class VertexService {
   constructor(config) {
     try {
       // Parse config with proper error handling
       if (!config) {
-        console.warn('VertexService: No config provided, using default values');
+        console.warn('⚠️ VertexService: No config provided, using default values');
         this.config = {
           PROJECT_ID: 'default-project',
           LOCATION: 'global',
@@ -19,18 +22,30 @@ class VertexService {
 
       // Validate required config properties
       if (!this.config.PROJECT_ID) {
-        console.warn('VertexService: PROJECT_ID not provided, using default');
+        console.warn('⚠️ VertexService: PROJECT_ID not provided, using default');
         this.config.PROJECT_ID = 'default-project';
       }
 
       // Initialize Google Auth with error handling
       try {
-        this.auth = new GoogleAuth({
-          keyFile: this.config.KEY_FILE_PATH,
-          scopes: ['https://www.googleapis.com/auth/cloud-platform']
-        });
+        if (this.config.CREDENTIALS) {
+          // Use credentials from config (environment variables)
+          this.auth = new GoogleAuth({
+            credentials: this.config.CREDENTIALS,
+            scopes: ['https://www.googleapis.com/auth/cloud-platform']
+          });
+        } else if (this.config.KEY_FILE_PATH) {
+          // Fallback to key file (for backward compatibility)
+          this.auth = new GoogleAuth({
+            keyFile: this.config.KEY_FILE_PATH,
+            scopes: ['https://www.googleapis.com/auth/cloud-platform']
+          });
+        } else {
+          console.warn('⚠️ VertexService: No credentials provided');
+          this.auth = null;
+        }
       } catch (authError) {
-        console.warn('VertexService: Failed to initialize Google Auth:', authError.message);
+        console.warn('⚠️ VertexService: Failed to initialize Google Auth:', authError.message);
         this.auth = null;
       }
 
@@ -40,14 +55,14 @@ class VertexService {
       this.catalogId = this.config.CATALOG_ID || 'default_catalog';
       this.branchId = this.config.BRANCH_ID || '0';
       
-      console.log('VertexService initialized with config:', {
+      console.log('✅ VertexService initialized with config:', {
         projectId: this.projectId,
         location: this.location,
         catalogId: this.catalogId,
         branchId: this.branchId
       });
     } catch (error) {
-      console.error('VertexService: Failed to initialize:', error.message);
+      console.error('❌ VertexService: Failed to initialize:', error.message);
       // Set default values to prevent crashes
       this.config = {
         PROJECT_ID: 'default-project',

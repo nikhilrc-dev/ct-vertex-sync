@@ -16,8 +16,36 @@ deployAs:
           description: commercetools client scope
         - key: CTP_REGION
           description: Region of commercetools project
-        - key: VERTEX_CONFIG
-          description: Escaped JSON object including credentials to Vertex platform and other settings
+        - key: VERTEX_PROJECT_ID
+          description: Google Cloud Project ID for Vertex AI
+        - key: VERTEX_LOCATION
+          description: Google Cloud location for Vertex AI
+        - key: VERTEX_CATALOG_ID
+          description: Vertex AI catalog ID
+        - key: VERTEX_BRANCH_ID
+          description: Vertex AI branch ID
+        - key: VERTEX_SERVICE_ACCOUNT_TYPE
+          description: Google Cloud service account type
+        - key: VERTEX_SERVICE_ACCOUNT_PROJECT_ID
+          description: Google Cloud service account project ID
+        - key: VERTEX_SERVICE_ACCOUNT_PRIVATE_KEY_ID
+          description: Google Cloud service account private key ID
+        - key: VERTEX_SERVICE_ACCOUNT_PRIVATE_KEY
+          description: Google Cloud service account private key
+        - key: VERTEX_SERVICE_ACCOUNT_CLIENT_EMAIL
+          description: Google Cloud service account client email
+        - key: VERTEX_SERVICE_ACCOUNT_CLIENT_ID
+          description: Google Cloud service account client ID
+        - key: VERTEX_SERVICE_ACCOUNT_AUTH_URI
+          description: Google Cloud service account auth URI
+        - key: VERTEX_SERVICE_ACCOUNT_TOKEN_URI
+          description: Google Cloud service account token URI
+        - key: VERTEX_SERVICE_ACCOUNT_AUTH_PROVIDER_X509_CERT_URL
+          description: Google Cloud service account auth provider cert URL
+        - key: VERTEX_SERVICE_ACCOUNT_CLIENT_X509_CERT_URL
+          description: Google Cloud service account client cert URL
+        - key: VERTEX_SERVICE_ACCOUNT_UNIVERSE_DOMAIN
+          description: Google Cloud service account universe domain
   - name: incremental-updater
     applicationType: event
     endpoint: /deltaSync
@@ -38,5 +66,33 @@ deployAs:
           description: commercetools client scope
         - key: CTP_REGION
           description: Region of commercetools project
-        - key: VERTEX_CONFIG
-          description: Escaped JSON object including credentials to Vertex platform and other settings 
+        - key: VERTEX_PROJECT_ID
+          description: Google Cloud Project ID for Vertex AI
+        - key: VERTEX_LOCATION
+          description: Google Cloud location for Vertex AI
+        - key: VERTEX_CATALOG_ID
+          description: Vertex AI catalog ID
+        - key: VERTEX_BRANCH_ID
+          description: Vertex AI branch ID
+        - key: VERTEX_SERVICE_ACCOUNT_TYPE
+          description: Google Cloud service account type
+        - key: VERTEX_SERVICE_ACCOUNT_PROJECT_ID
+          description: Google Cloud service account project ID
+        - key: VERTEX_SERVICE_ACCOUNT_PRIVATE_KEY_ID
+          description: Google Cloud service account private key ID
+        - key: VERTEX_SERVICE_ACCOUNT_PRIVATE_KEY
+          description: Google Cloud service account private key
+        - key: VERTEX_SERVICE_ACCOUNT_CLIENT_EMAIL
+          description: Google Cloud service account client email
+        - key: VERTEX_SERVICE_ACCOUNT_CLIENT_ID
+          description: Google Cloud service account client ID
+        - key: VERTEX_SERVICE_ACCOUNT_AUTH_URI
+          description: Google Cloud service account auth URI
+        - key: VERTEX_SERVICE_ACCOUNT_TOKEN_URI
+          description: Google Cloud service account token URI
+        - key: VERTEX_SERVICE_ACCOUNT_AUTH_PROVIDER_X509_CERT_URL
+          description: Google Cloud service account auth provider cert URL
+        - key: VERTEX_SERVICE_ACCOUNT_CLIENT_X509_CERT_URL
+          description: Google Cloud service account client cert URL
+        - key: VERTEX_SERVICE_ACCOUNT_UNIVERSE_DOMAIN
+          description: Google Cloud service account universe domain 

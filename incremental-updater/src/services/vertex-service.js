@@ -26,11 +26,22 @@ class VertexService {
 
       // Initialize Google Auth
       try {
-        this.auth = new GoogleAuth({
-          scopes: ['https://www.googleapis.com/auth/cloud-platform'],
-          keyFilename: this.config.KEY_FILE_PATH || undefined,
-          credentials: this.config.CREDENTIALS || undefined
-        });
+        if (this.config.CREDENTIALS) {
+          // Use credentials from config (environment variables)
+          this.auth = new GoogleAuth({
+            credentials: this.config.CREDENTIALS,
+            scopes: ['https://www.googleapis.com/auth/cloud-platform']
+          });
+        } else if (this.config.KEY_FILE_PATH) {
+          // Fallback to key file (for backward compatibility)
+          this.auth = new GoogleAuth({
+            keyFilename: this.config.KEY_FILE_PATH,
+            scopes: ['https://www.googleapis.com/auth/cloud-platform']
+          });
+        } else {
+          console.warn('VertexService: No credentials provided');
+          this.auth = null;
+        }
       } catch (error) {
         console.warn('VertexService: Failed to initialize Google Auth:', error.message);
         this.auth = null;
