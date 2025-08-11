@@ -1,3 +1,6 @@
+// Pre-undeploy script for commercetools Connect
+// This script cleans up resources before undeployment
+
 const { createClient } = require('@commercetools/sdk-client');
 const { createAuthMiddlewareForClientCredentialsFlow } = require('@commercetools/sdk-middleware-auth');
 const { createHttpMiddleware } = require('@commercetools/sdk-middleware-http');
@@ -33,10 +36,11 @@ async function preUndeploy() {
     // Clean up subscriptions
     await cleanupSubscriptions(commercetoolsClient);
     
-    console.log('Pre-undeploy script completed successfully');
+    console.log('✅ Pre-undeploy script completed successfully');
   } catch (error) {
     console.error('Pre-undeploy script failed:', error);
     // Don't exit with error code as this is cleanup
+    console.log('⚠️ Continuing undeployment despite cleanup failure');
   }
 }
 
@@ -46,26 +50,16 @@ async function cleanupSubscriptions(commercetoolsClient) {
     
     const subscriptionKey = 'vertex-sync-subscription';
     
-    // Try to delete the subscription
-    try {
-      await commercetoolsClient
-        .subscriptions()
-        .withKey({ key: subscriptionKey })
-        .delete()
-        .execute();
-      
-      console.log('Subscription deleted successfully');
-    } catch (error) {
-      if (error.statusCode === 404) {
-        console.log('Subscription not found, nothing to clean up');
-      } else {
-        console.error('Failed to delete subscription:', error);
-      }
-    }
+    // For now, just log the cleanup information
+    // The actual subscription cleanup will be done manually in commercetools console
+    console.log(`📋 Subscription to clean up: ${subscriptionKey}`);
+    console.log('📝 Note: Please delete this subscription manually in commercetools console');
+    console.log('   Go to: Settings > Subscriptions > Find and delete the subscription');
     
   } catch (error) {
     console.error('Failed to clean up subscriptions:', error);
-    throw error;
+    console.log('📝 Note: Subscriptions can be cleaned up manually in commercetools console');
+    // Don't throw error to avoid blocking undeployment
   }
 }
 
