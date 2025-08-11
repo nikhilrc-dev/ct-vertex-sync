@@ -28,8 +28,23 @@ class VertexService {
       try {
         if (this.config.CREDENTIALS) {
           // Use credentials from config (environment variables)
+          // Fix private key formatting for environment variables
+          const credentials = { ...this.config.CREDENTIALS };
+
+          // Ensure private key is properly formatted
+          if (credentials.private_key) {
+            // Replace literal \n with actual newlines
+            credentials.private_key = credentials.private_key.replace(/\\n/g, '\n');
+
+            // Ensure the private key has proper headers and footers
+            if (!credentials.private_key.includes('-----BEGIN PRIVATE KEY-----')) {
+              credentials.private_key = `-----BEGIN PRIVATE KEY-----\n${credentials.private_key}\n-----END PRIVATE KEY-----`;
+            }
+          }
+
+          console.log('🔧 VertexService: Using credentials from environment variables');
           this.auth = new GoogleAuth({
-            credentials: this.config.CREDENTIALS,
+            credentials: credentials,
             scopes: ['https://www.googleapis.com/auth/cloud-platform']
           });
         } else if (this.config.KEY_FILE_PATH) {
@@ -43,7 +58,7 @@ class VertexService {
           this.auth = null;
         }
       } catch (error) {
-        console.warn('VertexService: Failed to initialize Google Auth:', error.message);
+        console.error('❌ VertexService: Failed to initialize Google Auth:', error.message);
         this.auth = null;
       }
 
