@@ -6,83 +6,20 @@ class ProductSyncService {
 
   async syncProduct(productId, action = 'upsert') {
     try {
-      console.log(`🔄 ProductSyncService.syncProduct called with: productId=${productId}, action=${action}`);
-      
-      if (action === 'delete') {
-        console.log(`🗑️ Calling VertexService.deleteProduct for product: ${productId}`);
-        const result = await this.vertexService.deleteProduct(productId);
-        console.log(`✅ VertexService.deleteProduct completed for product: ${productId}`, result);
-        return result;
-      } else {
-        console.log(`📦 Fetching product data for: ${productId}`);
-        const product = await this.fetchProductById(productId);
-        console.log(`📦 Product data fetched, calling VertexService.upsertProduct for: ${productId}`);
-        const result = await this.vertexService.upsertProduct(product);
-        console.log(`✅ VertexService.upsertProduct completed for product: ${productId}`, result);
-        return result;
-      }
-    } catch (error) {
-      console.error(`❌ Failed to sync product ${productId}:`, error);
-      console.error(`🔍 Error details:`, {
-        message: error.message,
-        stack: error.stack
-      });
-      throw error;
-    }
-  }
-
-  async syncProductWithStoreCheck(productId, storeKey, action = 'upsert') {
-    try {
-      // Syncing product with action
-      
       if (action === 'delete') {
         return await this.vertexService.deleteProduct(productId);
       } else {
-        // Fetch product from general product projections
-        const product = await this.fetchProductProjectionInStore(productId, storeKey);
-        
-        if (product) {
-          return await this.vertexService.upsertProduct(product);
-        } else {
-          // Product not found, remove it from Vertex
-          console.log(`Product ${productId} not found, removing from Vertex`);
-          return await this.vertexService.deleteProduct(productId);
-        }
+        const product = await this.fetchProductById(productId);
+        return await this.vertexService.upsertProduct(product);
       }
     } catch (error) {
-      console.error(`Failed to sync product ${productId}:`, error);
+      console.error(`❌ Failed to sync product ${productId}:`, error.message);
       throw error;
     }
   }
 
-  async syncStoreProducts(storeKey) {
-    try {
-      // Syncing all products for store
-      
-      const products = await this.fetchProductsByStore(storeKey);
-      // Found products for store
-      
-      const results = [];
-      for (const product of products) {
-        try {
-          const result = await this.vertexService.upsertProduct(product);
-          results.push(result);
-        } catch (error) {
-          console.error(`Failed to sync product ${product.id}:`, error);
-          results.push({ error: error.message, productId: product.id });
-        }
-      }
-      
-      return {
-        success: true,
-        processedCount: products.length,
-        results
-      };
-    } catch (error) {
-      console.error(`Failed to sync store products for ${storeKey}:`, error);
-      throw error;
-    }
-  }
+  // Store-related methods removed since stores are not used
+  // Focus on core product sync functionality only
 
   async fetchProductById(productId) {
     try {
@@ -202,104 +139,8 @@ class ProductSyncService {
     });
   }
 
-  async fetchProductsByStore(storeKey) {
-    try {
-      // Fetching products for store
-      
-      // First, get the store to find its product selections
-      const storeResponse = await this.commercetoolsClient
-        .execute({
-          uri: `/stores/key=${storeKey}`,
-          method: 'GET'
-        });
-
-      const store = storeResponse.body;
-      const productSelections = store.productSelections || [];
-
-      const allProducts = [];
-
-      for (const productSelection of productSelections) {
-        const products = await this.fetchProductsByProductSelection(productSelection.id);
-        allProducts.push(...products);
-      }
-
-              // Found products for store
-      return allProducts;
-
-    } catch (error) {
-      console.error(`Failed to fetch products for store ${storeKey}:`, error);
-      throw error;
-    }
-  }
-
-  async fetchProductsByProductSelection(productSelectionId) {
-    try {
-      const products = [];
-      let lastId = null;
-      const limit = 500;
-
-      while (true) {
-        const query = {
-          limit,
-          ...(lastId && { where: `id > "${lastId}"` })
-        };
-
-        const response = await this.commercetoolsClient
-          .execute({
-            uri: `/product-selections/${productSelectionId}/products`,
-            method: 'GET',
-            query
-          });
-
-        const batch = response.body.results;
-        products.push(...batch);
-
-        if (batch.length < limit) {
-          break;
-        }
-
-        lastId = batch[batch.length - 1].id;
-      }
-
-      return products;
-
-    } catch (error) {
-      console.error(`Failed to fetch products for product selection ${productSelectionId}:`, error);
-      throw error;
-    }
-  }
-
-  async handleProductSelectionChange(productSelectionId, storeKey) {
-    try {
-      // Handling product selection change
-      
-      // Get all products in the product selection
-      const products = await this.fetchProductsByProductSelection(productSelectionId);
-      
-      // Sync each product with store check
-      const results = [];
-      for (const product of products) {
-        try {
-          const result = await this.syncProductWithStoreCheck(product.id, storeKey, 'upsert');
-          results.push(result);
-        } catch (error) {
-          console.error(`Failed to sync product ${product.id}:`, error);
-          results.push({ error: error.message, productId: product.id });
-        }
-      }
-      
-      return {
-        success: true,
-        productSelectionId,
-        storeKey,
-        processedCount: products.length,
-        results
-      };
-    } catch (error) {
-      console.error(`Failed to handle product selection change:`, error);
-      throw error;
-    }
-  }
+  // Store and Product Selection methods removed since they're not needed
+  // Focus on core product sync functionality only
 }
 
 module.exports = { ProductSyncService }; 

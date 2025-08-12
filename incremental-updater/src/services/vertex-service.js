@@ -155,29 +155,16 @@ class VertexService {
 
   async deleteProduct(productId) {
     try {
-      console.log(`🗑️ Starting deletion of product ${productId} from Vertex AI...`);
-      
       // Check if Vertex AI client is available
       if (!this.auth) {
         console.warn('VertexService: Google Auth not available, using mock implementation');
         return await this.performVertexDelete(productId);
       }
       
-      console.log(`🔧 Vertex AI auth available, proceeding with deletion...`);
-      
       // Delete product from Vertex AI
-      const result = await this.deleteProductFromVertex(productId);
-      
-      console.log(`✅ Successfully deleted product ${productId} from Vertex AI:`, result);
-      return result;
+      return await this.deleteProductFromVertex(productId);
     } catch (error) {
-      console.error(`❌ Failed to delete product ${productId} from Vertex AI:`, error);
-      console.error(`🔍 Error details:`, {
-        message: error.message,
-        status: error.status,
-        statusText: error.statusText,
-        stack: error.stack
-      });
+      console.error(`❌ Failed to delete product ${productId} from Vertex AI:`, error.message);
       throw error;
     }
   }
@@ -651,14 +638,9 @@ class VertexService {
 
   async deleteProductFromVertex(productId) {
     try {
-      console.log(`🔑 Getting access token for Vertex AI...`);
       const accessToken = await this.getAccessToken();
-      console.log(`✅ Access token obtained successfully`);
-      
       const endpoint = `${this.branchPath}/products/${productId}`;
       const url = this.getApiUrl(endpoint);
-      
-      console.log(`🌐 Making DELETE request to: ${url}`);
 
       const response = await fetch(url, {
         method: 'DELETE',
@@ -668,23 +650,17 @@ class VertexService {
         },
       });
 
-      console.log(`📡 Response status: ${response.status} ${response.statusText}`);
-
       if (!response.ok) {
         const errorText = await response.text();
-        console.error(`❌ Delete request failed: ${response.status} ${response.statusText}`);
-        console.error(`📄 Error response: ${errorText}`);
         throw new Error(`Product delete failed: ${response.status} ${response.statusText} - ${errorText}`);
       }
 
-      console.log(`✅ Product ${productId} successfully deleted from Vertex AI`);
       return {
         success: true,
         productId: productId,
         timestamp: new Date().toISOString()
       };
     } catch (error) {
-      console.error('❌ Product delete error:', error);
       throw error;
     }
   }
