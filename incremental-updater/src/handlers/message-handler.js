@@ -12,36 +12,86 @@ class MessageHandler {
       let messageData = message;
       let resourceTypeId, resourceId, type;
       
+      // Handle Google Cloud Pub/Sub message format
+      if (message.message && message.message.data) {
+        try {
+          // Decode base64 data from Pub/Sub message
+          const decodedData = Buffer.from(message.message.data, 'base64').toString('utf-8');
+          console.log('📦 Decoded Pub/Sub data:', decodedData);
+          
+          try {
+            const parsedData = JSON.parse(decodedData);
+            messageData = parsedData;
+            console.log('📦 Parsed JSON from Pub/Sub data');
+          } catch (parseError) {
+            console.log('⚠️ Could not parse JSON from Pub/Sub data, using raw decoded data');
+            messageData = { rawData: decodedData };
+          }
+        } catch (decodeError) {
+          console.log('⚠️ Could not decode base64 data, using original message');
+        }
+      }
+      
       // Try to extract data from different possible structures
-      if (message.data) {
+      if (message.data && !messageData.rawData) {
         messageData = message.data;
         console.log('📦 Extracted data from message.data');
       }
       
-      if (message.message) {
+      // Only try message.message if we haven't already decoded Pub/Sub data
+      if (message.message && !messageData.rawData && !messageData.resource) {
         messageData = message.message;
         console.log('📦 Extracted data from message.message');
       }
       
-      // Try to get resource type and ID from various possible locations
-      resourceTypeId = messageData.resource?.typeId || 
-                      messageData.resourceTypeId || 
-                      messageData.resourceType ||
-                      messageData.typeId;
+      // Handle different notification types based on commercetools documentation
+      console.log('🔍 Notification type:', messageData.notificationType);
       
-      resourceId = messageData.resource?.id || 
-                  messageData.resourceId || 
-                  messageData.id;
-      
-      type = messageData.type || 
-             messageData.messageType || 
-             messageData.eventType;
+      // Extract fields based on notification type
+      if (messageData.notificationType === 'Message') {
+        // Message notification - contains predefined Messages
+        resourceTypeId = messageData.resource?.typeId;
+        resourceId = messageData.resource?.id;
+        type = messageData.type;
+        
+        console.log('📋 Processing Message notification');
+      } else if (messageData.notificationType === 'Change') {
+        // Change notification - contains resource change information
+        resourceTypeId = messageData.resourceTypeId;
+        resourceId = messageData.resourceId;
+        type = messageData.changeType || messageData.type;
+        
+        console.log('📋 Processing Change notification');
+      } else if (messageData.notificationType === 'Event') {
+        // Event notification - contains predefined Events
+        resourceTypeId = messageData.resourceType;
+        resourceId = messageData.resourceId;
+        type = messageData.type;
+        
+        console.log('📋 Processing Event notification');
+      } else {
+        // Fallback to generic extraction
+        resourceTypeId = messageData.resource?.typeId || 
+                        messageData.resourceTypeId || 
+                        messageData.resourceType ||
+                        messageData.typeId;
+        
+        resourceId = messageData.resource?.id || 
+                    messageData.resourceId || 
+                    messageData.id;
+        
+        type = messageData.type || 
+               messageData.messageType || 
+               messageData.eventType ||
+               messageData.changeType;
+      }
       
       console.log('🔍 Extracted message info:', {
+        notificationType: messageData.notificationType,
         type: type,
         resourceTypeId: resourceTypeId,
         resourceId: resourceId,
-        version: messageData.version,
+        version: messageData.version || messageData.resourceVersion,
         messageKeys: Object.keys(messageData)
       });
       
@@ -53,11 +103,27 @@ class MessageHandler {
         const possibleProductId = messageData.productId || 
                                  messageData.product?.id || 
                                  messageData.id ||
-                                 messageData.key;
+                                 messageData.key ||
+                                 messageData.subject;
         
         if (possibleProductId) {
           console.log(`🔍 Found possible product ID: ${possibleProductId}`);
           return await this.handleProductMessage('ProductUpdated', possibleProductId, message);
+        }
+        
+        // Try to extract from raw decoded data if available
+        if (messageData.rawData) {
+          console.log('🔍 Trying to extract from raw decoded data...');
+          // Look for common patterns in the raw data
+          const productIdMatch = messageData.rawData.match(/"id"\s*:\s*"([^"]+)"/);
+          const typeMatch = messageData.rawData.match(/"type"\s*:\s*"([^"]+)"/);
+          
+          if (productIdMatch && typeMatch) {
+            const extractedProductId = productIdMatch[1];
+            const extractedType = typeMatch[1];
+            console.log(`🔍 Extracted from raw data - Product ID: ${extractedProductId}, Type: ${extractedType}`);
+            return await this.handleProductMessage(extractedType, extractedProductId, message);
+          }
         }
         
         console.log('❌ Could not extract any useful information from message');

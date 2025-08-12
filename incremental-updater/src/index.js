@@ -105,9 +105,10 @@ app.get('/health', (req, res) => {
 app.post('/deltaSync', async (req, res) => {
   try {
     console.log('🔄 Delta sync request received');
-    console.log('📋 Request headers:', req.headers);
+    console.log('📋 Request headers:', JSON.stringify(req.headers, null, 2));
     console.log('📋 Request body type:', typeof req.body);
     console.log('📋 Request body keys:', Object.keys(req.body || {}));
+    console.log('📋 Request body length:', JSON.stringify(req.body).length);
     
     const message = req.body;
     
@@ -117,6 +118,16 @@ app.post('/deltaSync', async (req, res) => {
         success: true,
         message: 'Empty message received and ignored'
       });
+    }
+    
+    // Log the full message structure for debugging
+    console.log('📋 Full message structure:', JSON.stringify(message, null, 2));
+    
+    // Check if this is a Pub/Sub message
+    if (message.message && message.message.data) {
+      console.log('📦 Detected Pub/Sub message format');
+      console.log('📦 Pub/Sub data length:', message.message.data.length);
+      console.log('📦 Pub/Sub data preview:', message.message.data.substring(0, 100) + '...');
     }
     
     const result = await messageHandler.handleMessage(message);

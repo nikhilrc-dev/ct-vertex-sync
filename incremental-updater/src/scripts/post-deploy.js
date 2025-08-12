@@ -49,10 +49,11 @@ async function setupSubscriptions(commercetoolsClient) {
     console.log('Setting up subscriptions...');
     
     const subscriptionConfig = {
-      key: 'vertex-sync-subscription',
+      key: 'vertex-subscription',
       destination: {
-        type: 'HTTP',
-        url: `${process.env.CONNECT_BASE_URL}/deltaSync`
+        type: 'GoogleCloudPubSub',
+        projectId: 'ct-connectors-sandbox',
+        topic: 'event-3162edfa-b2cd-474f-9a59-a4f427bec747-incremental-updater'
       },
       messages: [
         {
@@ -63,49 +64,26 @@ async function setupSubscriptions(commercetoolsClient) {
             'ProductUnpublished',
             'ProductDeleted',
             'ProductVariantAdded',
-            'ProductVariantRemoved',
-            'ProductVariantUpdated',
             'ProductPriceChanged',
             'ProductPriceRemoved',
             'ProductPriceAdded',
-            'ProductSlugChanged',
-            'ProductNameChanged',
-            'ProductDescriptionChanged',
-            'ProductMetaTitleChanged',
-            'ProductMetaDescriptionChanged',
-            'ProductMetaKeywordsChanged'
-          ]
-        },
-        {
-          resourceTypeId: 'store',
-          types: [
-            'StoreProductSelectionsChanged',
-            'StoreCreated',
-            'StoreDeleted',
-            'StoreNameChanged'
-          ]
-        },
-        {
-          resourceTypeId: 'product-selection',
-          types: [
-            'ProductSelectionProductAdded',
-            'ProductSelectionProductRemoved',
-            'ProductSelectionVariantSelectionChanged',
-            'ProductSelectionCreated',
-            'ProductSelectionDeleted'
+            'ProductSlugChanged'
           ]
         }
-      ]
+      ],
+      format: {
+        type: 'Platform'
+      }
     };
 
     // For now, just log the subscription configuration
     // The actual subscription setup will be done manually in commercetools console
     console.log('📋 Subscription Configuration:');
     console.log(`   Key: ${subscriptionConfig.key}`);
-    console.log(`   URL: ${subscriptionConfig.destination.url}`);
+    console.log(`   Project ID: ${subscriptionConfig.destination.projectId}`);
+    console.log(`   Topic: ${subscriptionConfig.destination.topic}`);
     console.log(`   Product Events: ${subscriptionConfig.messages[0].types.length} types`);
-    console.log(`   Store Events: ${subscriptionConfig.messages[1].types.length} types`);
-    console.log(`   Product Selection Events: ${subscriptionConfig.messages[2].types.length} types`);
+    console.log(`   Format: ${subscriptionConfig.format.type}`);
     
     console.log('📝 Note: Please configure this subscription manually in commercetools console');
     console.log('   Go to: Settings > Subscriptions > Create Subscription');
