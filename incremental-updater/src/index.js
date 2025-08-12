@@ -105,8 +105,20 @@ app.get('/health', (req, res) => {
 app.post('/deltaSync', async (req, res) => {
   try {
     console.log('🔄 Delta sync request received');
+    console.log('📋 Request headers:', req.headers);
+    console.log('📋 Request body type:', typeof req.body);
+    console.log('📋 Request body keys:', Object.keys(req.body || {}));
     
     const message = req.body;
+    
+    if (!message || Object.keys(message).length === 0) {
+      console.log('⚠️ Empty message received');
+      return res.status(200).json({
+        success: true,
+        message: 'Empty message received and ignored'
+      });
+    }
+    
     const result = await messageHandler.handleMessage(message);
     
     res.status(200).json({

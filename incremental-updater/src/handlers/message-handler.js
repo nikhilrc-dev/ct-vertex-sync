@@ -6,22 +6,63 @@ class MessageHandler {
 
   async handleMessage(message) {
     try {
-      // Handle CloudEvent format - extract data from nested structure
+      console.log('🔍 Raw message received:', JSON.stringify(message, null, 2));
+      
+      // Handle different message formats
       let messageData = message;
+      let resourceTypeId, resourceId, type;
+      
+      // Try to extract data from different possible structures
       if (message.data) {
         messageData = message.data;
+        console.log('📦 Extracted data from message.data');
       }
-
-      console.log('Processing message:', {
-        type: messageData.type,
-        resourceTypeId: messageData.resource?.typeId,
-        resourceId: messageData.resource?.id,
-        version: messageData.version
+      
+      if (message.message) {
+        messageData = message.message;
+        console.log('📦 Extracted data from message.message');
+      }
+      
+      // Try to get resource type and ID from various possible locations
+      resourceTypeId = messageData.resource?.typeId || 
+                      messageData.resourceTypeId || 
+                      messageData.resourceType ||
+                      messageData.typeId;
+      
+      resourceId = messageData.resource?.id || 
+                  messageData.resourceId || 
+                  messageData.id;
+      
+      type = messageData.type || 
+             messageData.messageType || 
+             messageData.eventType;
+      
+      console.log('🔍 Extracted message info:', {
+        type: type,
+        resourceTypeId: resourceTypeId,
+        resourceId: resourceId,
+        version: messageData.version,
+        messageKeys: Object.keys(messageData)
       });
-
-      const { type, resource, resourceUserProvidedIdentifiers } = messageData;
-      const resourceTypeId = resource?.typeId;
-      const resourceId = resource?.id;
+      
+      // If we still don't have the required fields, try to extract from the raw message
+      if (!resourceTypeId || !resourceId || !type) {
+        console.log('⚠️ Could not extract required fields, trying alternative parsing...');
+        
+        // Try to find product ID in various locations
+        const possibleProductId = messageData.productId || 
+                                 messageData.product?.id || 
+                                 messageData.id ||
+                                 messageData.key;
+        
+        if (possibleProductId) {
+          console.log(`🔍 Found possible product ID: ${possibleProductId}`);
+          return await this.handleProductMessage('ProductUpdated', possibleProductId, message);
+        }
+        
+        console.log('❌ Could not extract any useful information from message');
+        return { success: true, message: 'Message received but could not parse' };
+      }
 
       // Handle different message types
       switch (resourceTypeId) {
@@ -35,11 +76,11 @@ class MessageHandler {
           return await this.handleProductSelectionMessage(type, resourceId, message);
         
         default:
-          console.log(`Unhandled resource type: ${resourceTypeId}`);
-          return { success: true, message: 'Unhandled resource type' };
+          console.log(`❌ Unhandled resource type: ${resourceTypeId}`);
+          return { success: true, message: `Unhandled resource type: ${resourceTypeId}` };
       }
     } catch (error) {
-      console.error('Failed to handle message:', error);
+      console.error('❌ Failed to handle message:', error);
       throw error;
     }
   }
