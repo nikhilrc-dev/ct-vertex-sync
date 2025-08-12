@@ -165,7 +165,10 @@ class MessageHandler {
         return await this.productSyncService.syncProductWithStoreCheck(productId, this.storeKey, 'upsert');
       
       case 'ProductDeleted':
-        return await this.productSyncService.syncProduct(productId, 'delete');
+        console.log(`🗑️ ProductDeleted case triggered, calling syncProduct with delete action for: ${productId}`);
+        const deleteResult = await this.productSyncService.syncProduct(productId, 'delete');
+        console.log(`✅ ProductDeleted sync completed for: ${productId}`, deleteResult);
+        return deleteResult;
       
       case 'ProductVariantAdded':
       case 'ProductVariantRemoved':

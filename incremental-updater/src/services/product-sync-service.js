@@ -6,16 +6,27 @@ class ProductSyncService {
 
   async syncProduct(productId, action = 'upsert') {
     try {
-      // Syncing product with action
+      console.log(`🔄 ProductSyncService.syncProduct called with: productId=${productId}, action=${action}`);
       
       if (action === 'delete') {
-        return await this.vertexService.deleteProduct(productId);
+        console.log(`🗑️ Calling VertexService.deleteProduct for product: ${productId}`);
+        const result = await this.vertexService.deleteProduct(productId);
+        console.log(`✅ VertexService.deleteProduct completed for product: ${productId}`, result);
+        return result;
       } else {
+        console.log(`📦 Fetching product data for: ${productId}`);
         const product = await this.fetchProductById(productId);
-        return await this.vertexService.upsertProduct(product);
+        console.log(`📦 Product data fetched, calling VertexService.upsertProduct for: ${productId}`);
+        const result = await this.vertexService.upsertProduct(product);
+        console.log(`✅ VertexService.upsertProduct completed for product: ${productId}`, result);
+        return result;
       }
     } catch (error) {
-      console.error(`Failed to sync product ${productId}:`, error);
+      console.error(`❌ Failed to sync product ${productId}:`, error);
+      console.error(`🔍 Error details:`, {
+        message: error.message,
+        stack: error.stack
+      });
       throw error;
     }
   }
