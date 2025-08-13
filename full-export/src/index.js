@@ -7,7 +7,12 @@
  * - Full product synchronization
  */
 
-require('dotenv').config();
+// Load environment variables - try .env file first, then use system environment variables
+try {
+  require('dotenv').config();
+} catch (error) {
+  console.log('📋 No .env file found, using system environment variables');
+}
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -78,6 +83,13 @@ const buildVertexConfig = () => ({
     universe_domain: process.env.VERTEX_SERVICE_ACCOUNT_UNIVERSE_DOMAIN
   }
 });
+
+// Debug environment variables
+console.log('🔍 Environment variables check:');
+console.log(`  CTP_PROJECT_KEY: ${process.env.CTP_PROJECT_KEY ? '✅ Set' : '❌ Missing'}`);
+console.log(`  CTP_CLIENT_ID: ${process.env.CTP_CLIENT_ID ? '✅ Set' : '❌ Missing'}`);
+console.log(`  CTP_CLIENT_SECRET: ${process.env.CTP_CLIENT_SECRET ? '✅ Set' : '❌ Missing'}`);
+console.log(`  CTP_REGION: ${process.env.CTP_REGION || 'default'}`);
 
 // Initialize services
 const vertexService = new VertexService(JSON.stringify(buildVertexConfig()));

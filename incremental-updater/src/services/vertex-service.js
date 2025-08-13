@@ -3,9 +3,7 @@ const { GoogleAuth } = require('google-auth-library');
 class VertexService {
   constructor(config) {
     try {
-      // Handle config parsing with proper error handling
       if (!config) {
-        console.warn('VertexService: No config provided, using default values');
         this.config = {
           PROJECT_ID: 'default-project',
           LOCATION: 'global',
@@ -18,9 +16,7 @@ class VertexService {
         this.config = typeof config === 'string' ? JSON.parse(config) : config;
       }
 
-      // Validate required config properties
       if (!this.config.PROJECT_ID) {
-        console.warn('VertexService: PROJECT_ID not provided, using default');
         this.config.PROJECT_ID = 'default-project';
       }
 
@@ -42,23 +38,19 @@ class VertexService {
             }
           }
 
-          console.log('🔧 VertexService: Using credentials from environment variables');
           this.auth = new GoogleAuth({
             credentials: credentials,
             scopes: ['https://www.googleapis.com/auth/cloud-platform']
           });
         } else if (this.config.KEY_FILE_PATH) {
-          // Fallback to key file (for backward compatibility)
           this.auth = new GoogleAuth({
             keyFilename: this.config.KEY_FILE_PATH,
             scopes: ['https://www.googleapis.com/auth/cloud-platform']
           });
         } else {
-          console.warn('VertexService: No credentials provided');
           this.auth = null;
         }
       } catch (error) {
-        console.error('❌ VertexService: Failed to initialize Google Auth:', error.message);
         this.auth = null;
       }
 
@@ -67,22 +59,14 @@ class VertexService {
       this.catalogId = this.config.CATALOG_ID || 'default_catalog';
       this.branchId = this.config.BRANCH_ID || '0';
       
-      // Build API paths
       this.projectPath = `projects/${this.projectId}`;
       this.catalogPath = `${this.projectPath}/locations/${this.location}/catalogs/${this.catalogId}`;
       this.branchPath = `${this.catalogPath}/branches/${this.branchId}`;
       
-      // Retail API configuration
       this.retailApiBase = 'https://retail.googleapis.com';
       this.apiVersion = 'v2';
-      
-      // Alternative: Try the discovery API to find the correct endpoint
       this.discoveryApiBase = 'https://retail.googleapis.com/$discovery/rest';
-      
-          // VertexService initialized successfully
     } catch (error) {
-      console.error('VertexService: Failed to initialize:', error.message);
-      // Set default values to prevent crashes
       this.config = {
         PROJECT_ID: 'default-project',
         LOCATION: 'global',
@@ -221,23 +205,26 @@ class VertexService {
   }
 
   transformToRetailProduct(productData) {
+    console.log('🔄 TRANSFORMING PRODUCT TO VERTEX AI FORMAT:');
+    console.log('Input Product ID:', productData.id);
+    
     const productId = productData.id || productData.key || '';
     
-    // Extract product name from Commercetools structure (localized object)
-    const productName = productData.masterData?.current?.name?.['en-US'] || 
-                       productData.masterData?.current?.name?.['en-GB'] || 
-                       productData.masterData?.current?.name?.['en'] || 
+    // Extract product name from Commercetools structure (GraphQL format - simple string)
+    const productName = productData.masterData?.current?.name || 
                        productData.name || 
                        productData.title || 
                        'No name';
 
-    // Extract description from Commercetools structure (localized object)
-    const productDescription = productData.masterData?.current?.description?.['en-US'] || 
-                             productData.masterData?.current?.description?.['en-GB'] || 
-                             productData.masterData?.current?.description?.['en'] || 
+    console.log('📋 Extracted Product Name:', productName);
+
+    // Extract description from Commercetools structure (GraphQL format - simple string)
+    const productDescription = productData.masterData?.current?.description || 
                              productData.description || 
                              productData.metaDescription || 
                              '';
+
+    console.log('📋 Extracted Description:', productDescription);
 
     // Get the primary variant for SKU and other details
     // First check masterVariant (which contains the main product variant)
@@ -247,21 +234,28 @@ class VertexService {
                           productData.variants?.[0];
     const sku = primaryVariant?.sku || productId || 'NO-SKU';
 
+    console.log('📋 Extracted SKU:', sku);
+
     // Extract actual pricing from Commercetools
     const pricingInfo = this.extractPricingFromCommercetools(primaryVariant);
     
-    // Extract actual stock quantity from Commercetools
-    const stockQuantity = this.extractStockFromCommercetools(primaryVariant);
+    console.log('📋 Extracted Pricing Info:', JSON.stringify(pricingInfo, null, 2));
+    
+    // Extract actual stock quantity from Commercetools (checking masterVariant and variants)
+    const stockQuantity = this.extractStockFromCommercetools(productData);
+    
+    console.log('📋 Extracted Stock Quantity:', stockQuantity);
     
     // Generate rating (this can remain random as it's not typically stored in Commercetools)
     const ratingInfo = this.generateRating();
 
     // Build categories array - ensure we always have at least one category
+    // Now using names instead of IDs from GraphQL
     const categories = [];
     if (productData.masterData?.current?.categories && productData.masterData.current.categories.length > 0) {
-      // Use category IDs from Commercetools
+      // Use category names from GraphQL (transformed from GraphQL service)
       productData.masterData.current.categories.forEach(cat => {
-        if (cat.id) categories.push(cat.id);
+        if (cat.name) categories.push(cat.name);
       });
     } else if (productData.categories && productData.categories.length > 0) {
       // Fallback to name-based categories
@@ -279,6 +273,11 @@ class VertexService {
     const attributes = {
       sku: {
         text: [productId],
+        searchable: true,
+        indexable: true
+      },
+      product_id: {
+        text: [productData.id || productId],
         searchable: true,
         indexable: true
       },
@@ -323,6 +322,15 @@ class VertexService {
     if (productData.vendor && productData.vendor.trim() !== '') {
       attributes.vendor = {
         text: [productData.vendor],
+        searchable: true,
+        indexable: true
+      };
+    }
+
+    // Add product type as a custom attribute (using name instead of ID)
+    if (productData.productType && productData.productType.trim() !== '') {
+      attributes.product_type = {
+        text: [productData.productType],
         searchable: true,
         indexable: true
       };
@@ -396,8 +404,25 @@ class VertexService {
 
     // Only add priceInfo if pricing information exists
     if (pricingInfo) {
-      product.priceInfo = pricingInfo;
+      product.priceInfo = {
+        currencyCode: pricingInfo.currencyCode,
+        price: pricingInfo.price,
+        originalPrice: pricingInfo.originalPrice || pricingInfo.price
+      };
+      console.log('📋 Added Price Info:', JSON.stringify(product.priceInfo, null, 2));
+    } else {
+      console.log('⚠️ No pricing information available');
     }
+
+    console.log('📋 Final Product Object:', {
+      id: product.id,
+      title: product.title,
+      categories: product.categories,
+      availableQuantity: product.availableQuantity,
+      availability: product.availability,
+      priceInfo: product.priceInfo
+    });
+    console.log('✅ TRANSFORMATION COMPLETE');
 
     return product;
   }
@@ -407,22 +432,22 @@ class VertexService {
     if (variant?.prices && variant.prices.length > 0) {
       const price = variant.prices[0];
       
-      // Extract price value (convert from centAmount to dollars)
-      const priceValue = price.value?.centAmount ? price.value.centAmount / 100 : 0;
+      // Extract base price value (convert from centAmount to dollars)
+      const basePrice = price.value?.centAmount ? price.value.centAmount / 100 : 0;
       const currencyCode = price.value?.currencyCode || 'USD';
       
       // Check for discounted price
-      if (price.discounted) {
-        const discountedValue = price.discounted.value?.centAmount ? price.discounted.value.centAmount / 100 : 0;
+      if (price.discounted && price.discounted.value?.centAmount) {
+        const salePrice = price.discounted.value.centAmount / 100;
         
         return {
-          price: discountedValue,
-          originalPrice: priceValue,
+          price: salePrice,
+          originalPrice: basePrice,
           currencyCode: currencyCode
         };
       } else {
         return {
-          price: priceValue,
+          price: basePrice,
           currencyCode: currencyCode
         };
       }
@@ -432,26 +457,60 @@ class VertexService {
     return null;
   }
 
-  extractStockFromCommercetools(variant) {
-    // Check if variant has availability information
-    if (variant?.availability?.availableQuantity !== undefined) {
-      return variant.availability.availableQuantity;
-    }
-    
-    // Check for custom attributes that might contain stock information
-    if (variant?.attributes) {
-      const stockAttr = variant.attributes.find(attr => 
-        attr.name === 'stock' || 
-        attr.name === 'quantity' || 
-        attr.name === 'availableQuantity'
-      );
+  extractStockFromCommercetools(productData) {
+    // First check masterVariant availability (highest priority)
+    const masterVariant = productData.masterData?.current?.masterVariant;
+    if (masterVariant) {
+      // Check direct availability data from commercetools (REST API format)
+      if (masterVariant.availability?.availableQuantity !== undefined) {
+        return masterVariant.availability.availableQuantity || 0;
+      }
       
-      if (stockAttr && stockAttr.value) {
-        return parseInt(stockAttr.value) || 0;
+      // Check for custom attributes that might contain stock information
+      if (masterVariant.attributes) {
+        const stockAttr = masterVariant.attributes.find(attr => 
+          attr.name === 'stock' || 
+          attr.name === 'quantity' || 
+          attr.name === 'availableQuantity' ||
+          attr.name === 'inventory' ||
+          attr.name === 'stockLevel' ||
+          attr.name === 'qty' ||
+          attr.name === 'qtyAvailable'
+        );
+        
+        if (stockAttr && stockAttr.value) {
+          return parseInt(stockAttr.value) || 0;
+        }
       }
     }
     
-    // If no stock information found, return 0
+    // Then check all variants for availability
+    const variants = productData.masterData?.current?.variants || [];
+    for (const variant of variants) {
+      // Check direct availability data from commercetools (REST API format)
+      if (variant.availability?.availableQuantity !== undefined) {
+        return variant.availability.availableQuantity || 0;
+      }
+      
+      // Check for custom attributes that might contain stock information
+      if (variant.attributes) {
+        const stockAttr = variant.attributes.find(attr => 
+          attr.name === 'stock' || 
+          attr.name === 'quantity' || 
+          attr.name === 'availableQuantity' ||
+          attr.name === 'inventory' ||
+          attr.name === 'stockLevel' ||
+          attr.name === 'qty' ||
+          attr.name === 'qtyAvailable'
+        );
+        
+        if (stockAttr && stockAttr.value) {
+          return parseInt(stockAttr.value) || 0;
+        }
+      }
+    }
+    
+    // Default to 0 if no stock information found
     return 0;
   }
 
@@ -470,6 +529,22 @@ class VertexService {
       const accessToken = await this.getAccessToken();
       const endpoint = `${this.branchPath}/products:import`;
       const url = this.getApiUrl(endpoint);
+
+      // Log the complete payload being sent to Vertex AI
+      console.log('📋 VERTEX AI PAYLOAD DETAILS:');
+      console.log('Product ID:', product.id);
+      console.log('Title:', product.title);
+      console.log('Description:', product.description);
+      console.log('Categories:', product.categories);
+      console.log('Available Quantity:', product.availableQuantity);
+      console.log('Availability:', product.availability);
+      console.log('Price Info:', JSON.stringify(product.priceInfo, null, 2));
+      console.log('Fulfillment Info:', JSON.stringify(product.fulfillmentInfo, null, 2));
+      console.log('URI:', product.uri);
+      console.log('Attributes:', JSON.stringify(product.attributes, null, 2));
+      console.log('--- COMPLETE VERTEX PRODUCT OBJECT ---');
+      console.log(JSON.stringify(product, null, 2));
+      console.log('--- END VERTEX PRODUCT OBJECT ---');
 
       const importRequest = {
         inputConfig: {
@@ -590,6 +665,20 @@ class VertexService {
       const accessToken = await this.getAccessToken();
       const endpoint = `${this.branchPath}/products:import`;
       const url = this.getApiUrl(endpoint);
+
+      // Log the first product payload for debugging
+      if (products.length > 0) {
+        const firstProduct = products[0];
+        console.log('📋 FIRST VERTEX AI PRODUCT PAYLOAD:');
+        console.log('Product ID:', firstProduct.id);
+        console.log('Title:', firstProduct.title);
+        console.log('Available Quantity:', firstProduct.availableQuantity);
+        console.log('Availability:', firstProduct.availability);
+        console.log('Price Info:', JSON.stringify(firstProduct.priceInfo, null, 2));
+        console.log('--- COMPLETE FIRST PRODUCT OBJECT ---');
+        console.log(JSON.stringify(firstProduct, null, 2));
+        console.log('--- END FIRST PRODUCT OBJECT ---');
+      }
 
       const importRequest = {
         inputConfig: {

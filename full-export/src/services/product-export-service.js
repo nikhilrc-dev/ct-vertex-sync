@@ -1,10 +1,14 @@
 /**
  * ProductExportService - Handles full synchronization of products from commercetools to Vertex AI
+ * Now uses GraphQL API to fetch only necessary data with names instead of IDs
  */
+const { HybridService } = require('./hybrid-service');
+
 class ProductExportService {
   constructor(commercetoolsClient, vertexService) {
     this.commercetoolsClient = commercetoolsClient;
     this.vertexService = vertexService;
+    this.hybridService = new HybridService();
   }
 
   /**
@@ -27,16 +31,13 @@ class ProductExportService {
       // Process products in batches to avoid overwhelming the APIs
       const batchSize = 50;
       const batches = this.chunkArray(products, batchSize);
-      console.log(`🔄 Processing ${batches.length} batches of ${batchSize} products each`);
 
       for (let i = 0; i < batches.length; i++) {
         const batch = batches[i];
-        console.log(`📤 Processing batch ${i + 1}/${batches.length} (${batch.length} products)`);
 
         try {
           const batchResult = await this.vertexService.batchUpsertProducts(batch);
           processedCount += batch.length;
-          console.log(`✅ Successfully processed batch ${i + 1}`);
         } catch (error) {
           console.error(`❌ Error processing batch ${i + 1}:`, error.message);
           errorCount += batch.length;
@@ -65,7 +66,7 @@ class ProductExportService {
         errors: errors.length > 0 ? errors : undefined
       };
 
-      console.log(`🎉 Full sync completed in ${duration}ms`);
+      console.log(`✅ Full Sync: Completed in ${duration}ms - ${processedCount} products processed, ${errorCount} errors`);
       return result;
 
     } catch (error) {
@@ -75,155 +76,36 @@ class ProductExportService {
   }
 
   /**
-   * Fetches all products from commercetools using pagination
-   * @returns {Array} Array of all products
+   * Fetches all products from commercetools using Hybrid Service (GraphQL + REST)
+   * @returns {Array} Array of all products with names instead of IDs and real availability data
    */
   async fetchAllProducts() {
     try {
-      console.log('📥 Fetching all products from commercetools...');
+      // Use Hybrid service to fetch products with names instead of IDs and real availability data
+      const products = await this.hybridService.fetchAllProducts();
       
-      const accessToken = await this.getAccessToken();
-      const products = [];
-      let offset = 0;
-      const limit = 500; // commercetools API limit
-
-      while (true) {
-        const queryParams = new URLSearchParams({
-          limit: limit.toString(),
-          offset: offset.toString()
-        });
-
-        const response = await this.fetchWithToken(accessToken, `/products?${queryParams}`);
-        const batch = response.results;
-        
-        if (batch.length === 0) {
-          break;
-        }
-        
-        products.push(...batch);
-        console.log(`📦 Fetched ${batch.length} products (offset: ${offset}, total: ${products.length})`);
-
-        // Check if we've reached the end
-        if (batch.length < limit) {
-          break;
-        }
-
-        offset += limit;
-      }
-
-      console.log(`✅ Total products fetched: ${products.length}`);
+      console.log(`📥 Full Sync: Fetched ${products.length} products from commercetools`);
       return products;
 
     } catch (error) {
-      console.error('❌ Failed to fetch products from commercetools:', error);
+      console.error('❌ Failed to fetch products from commercetools via Hybrid Service:', error);
       throw error;
     }
   }
 
-  /**
-   * Gets an access token from commercetools OAuth endpoint
-   * @returns {Promise<string>} Access token
-   */
-  async getAccessToken() {
-    return new Promise((resolve, reject) => {
-      const https = require('https');
-      const postData = `grant_type=client_credentials&scope=manage_project:${process.env.CTP_PROJECT_KEY}`;
-      
-      const options = {
-        hostname: 'auth.us-central1.gcp.commercetools.com',
-        port: 443,
-        path: '/oauth/token',
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/x-www-form-urlencoded',
-          'Authorization': 'Basic ' + Buffer.from(process.env.CTP_CLIENT_ID + ':' + process.env.CTP_CLIENT_SECRET).toString('base64')
-        }
-      };
 
-      const req = https.request(options, (res) => {
-        let data = '';
-        
-        res.on('data', (chunk) => {
-          data += chunk;
-        });
-        
-        res.on('end', () => {
-          if (res.statusCode === 200) {
-            const tokenData = JSON.parse(data);
-            resolve(tokenData.access_token);
-          } else {
-            reject(new Error(`HTTP ${res.statusCode}: ${data}`));
-          }
-        });
-      });
-
-      req.on('error', (error) => {
-        reject(error);
-      });
-
-      req.write(postData);
-      req.end();
-    });
-  }
 
   /**
-   * Makes an authenticated HTTP request to commercetools API
-   * @param {string} accessToken - OAuth access token
-   * @param {string} endpoint - API endpoint path
-   * @returns {Promise<Object>} API response
-   */
-  async fetchWithToken(accessToken, endpoint) {
-    return new Promise((resolve, reject) => {
-      const https = require('https');
-      
-      const options = {
-        hostname: 'api.us-central1.gcp.commercetools.com',
-        port: 443,
-        path: `/${process.env.CTP_PROJECT_KEY}${endpoint}`,
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${accessToken}`,
-          'Content-Type': 'application/json'
-        }
-      };
-
-      const req = https.request(options, (res) => {
-        let data = '';
-        
-        res.on('data', (chunk) => {
-          data += chunk;
-        });
-        
-        res.on('end', () => {
-          if (res.statusCode === 200) {
-            const result = JSON.parse(data);
-            resolve(result);
-          } else {
-            reject(new Error(`HTTP ${res.statusCode}: ${data}`));
-          }
-        });
-      });
-
-      req.on('error', (error) => {
-        reject(error);
-      });
-
-      req.end();
-    });
-  }
-
-  /**
-   * Fetches a single product by ID
+   * Fetches a single product by ID using Hybrid Service
    * @param {string} productId - Product ID to fetch
-   * @returns {Promise<Object>} Product data
+   * @returns {Promise<Object>} Product data with names instead of IDs and real availability data
    */
   async fetchProductById(productId) {
     try {
-      const accessToken = await this.getAccessToken();
-      const response = await this.fetchWithToken(accessToken, `/products/${productId}`);
-      return response;
+      const product = await this.hybridService.fetchProductById(productId);
+      return product;
     } catch (error) {
-      console.error(`❌ Failed to fetch product ${productId}:`, error);
+      console.error(`❌ Failed to fetch product ${productId} via Hybrid Service:`, error);
       throw error;
     }
   }
@@ -243,32 +125,15 @@ class ProductExportService {
   }
 
   /**
-   * Gets product counts by status from commercetools
+   * Gets product counts by status from commercetools using Hybrid Service
    * @returns {Promise<Object>} Product counts by status
    */
   async getProductCounts() {
     try {
-      const accessToken = await this.getAccessToken();
-      
-      // Get total count
-      const totalResponse = await this.fetchWithToken(accessToken, '/products?limit=1');
-      const totalCount = totalResponse.total;
-      
-      // Get products with staged changes
-      const stagedResponse = await this.fetchWithToken(accessToken, '/products?limit=1&where=masterData(hasStagedChanges=true)');
-      const stagedCount = stagedResponse.total;
-      
-      // Calculate published (total minus staged)
-      const publishedCount = totalCount - stagedCount;
-      
-      return {
-        total: totalCount,
-        published: publishedCount,
-        staged: stagedCount,
-        draft: 0 // Draft products are not accessible via API
-      };
+      const counts = await this.hybridService.getProductCounts();
+      return counts;
     } catch (error) {
-      console.error('❌ Failed to get product counts:', error);
+      console.error('❌ Failed to get product counts via Hybrid Service:', error);
       throw error;
     }
   }

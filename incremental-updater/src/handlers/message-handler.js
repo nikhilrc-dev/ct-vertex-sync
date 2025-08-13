@@ -92,21 +92,45 @@ class MessageHandler {
           if (productIdMatch && typeMatch) {
             const extractedProductId = productIdMatch[1];
             const extractedType = typeMatch[1];
-            return await this.handleProductMessage(extractedType, extractedProductId, message);
+            console.log(`🔍 Extracted from raw data - Product ID: ${extractedProductId}, Type: ${extractedType}`);
+            const result = await this.handleProductMessage(extractedType, extractedProductId, message);
+            console.log(`✅ Message processing completed - Action: ${result.action || 'unknown'}`);
+            return result;
           }
         }
         
-        return { success: true, message: 'Message received but could not parse' };
+        console.log(`⚠️ Message received but could not parse - returning success`);
+        return { 
+          success: true, 
+          action: 'ignored',
+          message: 'Message received but could not parse' 
+        };
       }
 
       // Handle different message types
+      console.log(`📨 Received message - Resource Type: ${resourceTypeId}, ID: ${resourceId}, Event Type: ${type}`);
+      
+      let result;
       switch (resourceTypeId) {
         case 'product':
-          return await this.handleProductMessage(type, resourceId, message);
+          console.log(`🔄 Processing product event: ${type} for product ID: ${resourceId}`);
+          result = await this.handleProductMessage(type, resourceId, message);
+          break;
         
         default:
-          return { success: true, message: `Unhandled resource type: ${resourceTypeId}` };
+          console.log(`⚠️ Unhandled resource type: ${resourceTypeId} - ignoring message`);
+          result = { 
+            success: true, 
+            action: 'ignored',
+            message: `Unhandled resource type: ${resourceTypeId}`,
+            resourceTypeId: resourceTypeId,
+            resourceId: resourceId,
+            type: type
+          };
       }
+      
+      console.log(`✅ Message processing completed - Action: ${result.action || 'unknown'}, Success: ${result.success}`);
+      return result;
     } catch (error) {
       console.error('❌ Failed to handle message:', error);
       throw error;
@@ -116,29 +140,100 @@ class MessageHandler {
   async handleProductMessage(type, productId, message) {
     console.log(`🔄 Processing ${type} for product ${productId}`);
 
-    switch (type) {
-      case 'ProductCreated':
-      case 'ProductPublished':
-      case 'ProductUnpublished':
-      case 'ProductVariantAdded':
-      case 'ProductVariantRemoved':
-      case 'ProductVariantUpdated':
-      case 'ProductPriceChanged':
-      case 'ProductPriceRemoved':
-      case 'ProductPriceAdded':
-      case 'ProductSlugChanged':
-      case 'ProductNameChanged':
-      case 'ProductDescriptionChanged':
-      case 'ProductMetaTitleChanged':
-      case 'ProductMetaDescriptionChanged':
-      case 'ProductMetaKeywordsChanged':
-        return await this.productSyncService.syncProduct(productId, 'upsert');
-      
-      case 'ProductDeleted':
-        return await this.productSyncService.syncProduct(productId, 'delete');
-      
-      default:
-        return { success: true, message: 'Unhandled product message type' };
+    try {
+      switch (type) {
+        // CREATE OPERATIONS - Create product in Vertex AI
+        case 'ProductCreated':
+          console.log(`📦 Creating product ${productId} in Vertex AI (ProductCreated event)`);
+          const createResult = await this.productSyncService.syncProduct(productId, 'upsert');
+          console.log(`✅ Product ${productId} created in Vertex AI successfully`);
+          return {
+            ...createResult,
+            action: 'created',
+            message: `Product ${productId} created in Vertex AI`
+          };
+
+        // PUBLISH OPERATIONS - Create/Update product in Vertex AI
+        case 'ProductPublished':
+          console.log(`📦 Publishing product ${productId} to Vertex AI (ProductPublished event)`);
+          const publishResult = await this.productSyncService.syncProduct(productId, 'upsert');
+          console.log(`✅ Product ${productId} published to Vertex AI successfully`);
+          return {
+            ...publishResult,
+            action: 'published',
+            message: `Product ${productId} published to Vertex AI`
+          };
+
+        // DELETE OPERATIONS - Delete product from Vertex AI
+        case 'ProductDeleted':
+          console.log(`🗑️ Deleting product ${productId} from Vertex AI (ProductDeleted event)`);
+          const deleteResult = await this.productSyncService.syncProduct(productId, 'delete');
+          console.log(`✅ Product ${productId} deleted from Vertex AI successfully`);
+          return {
+            ...deleteResult,
+            action: 'deleted',
+            message: `Product ${productId} deleted from Vertex AI`
+          };
+
+        // UNPUBLISH OPERATIONS - Delete product from Vertex AI
+        case 'ProductUnpublished':
+          console.log(`🚫 Unpublishing product ${productId} from Vertex AI (ProductUnpublished event)`);
+          const unpublishResult = await this.productSyncService.syncProduct(productId, 'delete');
+          console.log(`✅ Product ${productId} unpublished from Vertex AI successfully`);
+          return {
+            ...unpublishResult,
+            action: 'unpublished',
+            message: `Product ${productId} unpublished from Vertex AI`
+          };
+
+        // UPDATE OPERATIONS - Update product in Vertex AI
+        case 'ProductVariantAdded':
+        case 'ProductVariantRemoved':
+        case 'ProductVariantUpdated':
+        case 'ProductPriceChanged':
+        case 'ProductPriceRemoved':
+        case 'ProductPriceAdded':
+        case 'ProductSlugChanged':
+        case 'ProductNameChanged':
+        case 'ProductDescriptionChanged':
+        case 'ProductMetaTitleChanged':
+        case 'ProductMetaDescriptionChanged':
+        case 'ProductMetaKeywordsChanged':
+        case 'ProductCategoryAdded':
+        case 'ProductCategoryRemoved':
+        case 'ProductImagesChanged':
+        case 'ProductAttributeAdded':
+        case 'ProductAttributeRemoved':
+        case 'ProductAttributeChanged':
+        case 'ProductStateChanged':
+        case 'ProductTaxCategoryChanged':
+        case 'ProductSearchKeywordsChanged':
+        case 'ProductExternalImageChanged':
+        case 'ProductAssetAdded':
+        case 'ProductAssetRemoved':
+        case 'ProductAssetChanged':
+          console.log(`🔄 Updating product ${productId} in Vertex AI (${type} event)`);
+          const updateResult = await this.productSyncService.syncProduct(productId, 'upsert');
+          console.log(`✅ Product ${productId} updated in Vertex AI successfully`);
+          return {
+            ...updateResult,
+            action: 'updated',
+            message: `Product ${productId} updated in Vertex AI (${type})`
+          };
+
+        // UNHANDLED EVENTS - Log but don't process
+        default:
+          console.log(`⚠️ Unhandled product message type: ${type} for product ${productId}`);
+          return { 
+            success: true, 
+            action: 'ignored',
+            message: `Unhandled product message type: ${type}`,
+            productId: productId
+          };
+      }
+    } catch (error) {
+      console.error(`❌ Failed to process ${type} for product ${productId}:`, error);
+      throw error;
     }
   }
 

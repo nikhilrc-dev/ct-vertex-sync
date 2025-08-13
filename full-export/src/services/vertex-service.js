@@ -6,9 +6,7 @@ const { GoogleAuth } = require('google-auth-library');
 class VertexService {
   constructor(config) {
     try {
-      // Parse config with proper error handling
       if (!config) {
-        console.warn('⚠️ VertexService: No config provided, using default values');
         this.config = {
           PROJECT_ID: 'default-project',
           LOCATION: 'global',
@@ -20,9 +18,7 @@ class VertexService {
         this.config = typeof config === 'string' ? JSON.parse(config) : config;
       }
 
-      // Validate required config properties
       if (!this.config.PROJECT_ID) {
-        console.warn('⚠️ VertexService: PROJECT_ID not provided, using default');
         this.config.PROJECT_ID = 'default-project';
       }
 
@@ -44,41 +40,27 @@ class VertexService {
             }
           }
 
-          console.log('🔧 VertexService: Using credentials from environment variables');
           this.auth = new GoogleAuth({
             credentials: credentials,
             scopes: ['https://www.googleapis.com/auth/cloud-platform']
           });
         } else if (this.config.KEY_FILE_PATH) {
-          // Fallback to key file (for backward compatibility)
           this.auth = new GoogleAuth({
             keyFile: this.config.KEY_FILE_PATH,
             scopes: ['https://www.googleapis.com/auth/cloud-platform']
           });
         } else {
-          console.warn('⚠️ VertexService: No credentials provided');
           this.auth = null;
         }
       } catch (authError) {
-        console.error('❌ VertexService: Failed to initialize Google Auth:', authError.message);
         this.auth = null;
       }
 
-      // Vertex AI Retail API configuration
       this.projectId = this.config.PROJECT_ID;
       this.location = this.config.LOCATION || 'global';
       this.catalogId = this.config.CATALOG_ID || 'default_catalog';
       this.branchId = this.config.BRANCH_ID || '0';
-      
-      console.log('✅ VertexService initialized with config:', {
-        projectId: this.projectId,
-        location: this.location,
-        catalogId: this.catalogId,
-        branchId: this.branchId
-      });
     } catch (error) {
-      console.error('❌ VertexService: Failed to initialize:', error.message);
-      // Set default values to prevent crashes
       this.config = {
         PROJECT_ID: 'default-project',
         LOCATION: 'global',
@@ -139,47 +121,58 @@ class VertexService {
   }
 
   transformToRetailProduct(commercetoolsProduct) {
-    // Extract product name from localized object
-    const productName = commercetoolsProduct.masterData?.current?.name?.['en-US'] || 
-                       commercetoolsProduct.masterData?.current?.name?.['en-GB'] || 
-                       commercetoolsProduct.masterData?.current?.name?.['en'] || 
+    // Extract product name from GraphQL format (already localized)
+    const productName = commercetoolsProduct.masterData?.current?.name || 
+                       commercetoolsProduct.title || 
+                       commercetoolsProduct.name || 
                        'No name';
 
-    // Extract description from localized object
-    const productDescription = commercetoolsProduct.masterData?.current?.description?.['en-US'] || 
-                             commercetoolsProduct.masterData?.current?.description?.['en-GB'] || 
-                             commercetoolsProduct.masterData?.current?.description?.['en'] || 
-                             '';
+    // Extract description from GraphQL format (already localized)
+    const productDescription = commercetoolsProduct.masterData?.current?.description || '';
 
-    // Get the first variant for SKU and other details
-    const variant = commercetoolsProduct.masterData?.current?.variants?.[0];
+    // Get the master variant for SKU and other details (GraphQL format)
+    const variant = commercetoolsProduct.masterData?.current?.masterVariant || 
+                   commercetoolsProduct.masterData?.current?.variants?.[0];
     const sku = variant?.sku || commercetoolsProduct.id || 'NO-SKU';
+
+    // Extract pricing information with proper discount handling
+    const pricingInfo = this.extractPricingFromCommercetools(variant);
+    
+    // Extract availability information from the entire product
+    const availabilityInfo = this.extractAvailabilityFromCommercetools(commercetoolsProduct);
+    
+    // Build fulfillment info based on availability
+    const fulfillmentInfo = this.buildFulfillmentInfo(availabilityInfo);
 
     // Transform to Vertex AI Retail API format
     const product = {
       id: commercetoolsProduct.id,
       title: productName,
       description: productDescription,
-      categories: commercetoolsProduct.masterData?.current?.categories?.map(cat => cat.id) || [],
-      fulfillmentInfo: [{
-        type: 'pickup-in-store',
-        placeIds: ['store1', 'store2']
-      }],
-      priceInfo: {
-        price: variant?.prices?.[0]?.value?.centAmount ? 
-               variant.prices[0].value.centAmount / 100 : 0,
-        originalPrice: variant?.prices?.[0]?.value?.centAmount ? 
-                      variant.prices[0].value.centAmount / 100 : 0,
-        currencyCode: variant?.prices?.[0]?.value?.currencyCode || 'USD'
-      },
-      availableQuantity: variant?.availability?.availableQuantity || 0,
-      uri: `https://example.com/products/${commercetoolsProduct.id}`,
+      categories: commercetoolsProduct.masterData?.current?.categories?.map(cat => cat.name) || [],
+      availableQuantity: availabilityInfo.availableQuantity,
+      availability: availabilityInfo.availableQuantity > 0 ? 'IN_STOCK' : 'OUT_OF_STOCK',
+      uri: this.buildProductUri(commercetoolsProduct),
       images: variant?.images?.map(img => ({
         uri: img.url,
         height: img.dimensions?.h || 0,
         width: img.dimensions?.w || 0
       })) || []
     };
+
+    // Add fulfillmentInfo only if it exists
+    if (fulfillmentInfo && fulfillmentInfo.length > 0) {
+      product.fulfillmentInfo = fulfillmentInfo;
+    }
+
+    // Add priceInfo only if pricing information exists
+    if (pricingInfo) {
+      product.priceInfo = {
+        currencyCode: pricingInfo.currencyCode,
+        price: pricingInfo.price,
+        originalPrice: pricingInfo.originalPrice || pricingInfo.price
+      };
+    }
 
     // Add custom attributes in the correct format
     const customAttributes = {};
@@ -198,27 +191,177 @@ class VertexService {
       text: [sku]
     };
 
-    // Add product ID as a custom attribute
-    customAttributes['product_id'] = {
-      text: [commercetoolsProduct.id]
-    };
+    // Add product type as a custom attribute (using name instead of ID)
+    if (commercetoolsProduct.productType) {
+      customAttributes['product_type'] = {
+        text: [commercetoolsProduct.productType]
+      };
+    }
 
     // Add CTP region information
     customAttributes['ctp_region'] = {
       text: [process.env.CTP_REGION || 'unknown']
     };
 
-    if (Object.keys(customAttributes).length > 0) {
-      product.attributes = customAttributes;
-    }
+    // Always add attributes to the product
+    product.attributes = customAttributes;
 
     return product;
   }
 
+  /**
+   * Extract pricing information from commercetools variant
+   */
+  extractPricingFromCommercetools(variant) {
+    if (!variant?.prices || variant.prices.length === 0) {
+      return null;
+    }
+
+    const price = variant.prices[0];
+    const basePrice = price.value?.centAmount ? price.value.centAmount / 100 : 0;
+    const currencyCode = price.value?.currencyCode || 'USD';
+
+    // Check for discounted price
+    if (price.discounted && price.discounted.value?.centAmount) {
+      const salePrice = price.discounted.value.centAmount / 100;
+      
+      return {
+        price: salePrice,
+        originalPrice: basePrice,
+        currencyCode: currencyCode
+      };
+    } else {
+      return {
+        price: basePrice,
+        currencyCode: currencyCode
+      };
+    }
+  }
+
+  /**
+   * Extract availability information from commercetools product (masterVariant + variants)
+   */
+  extractAvailabilityFromCommercetools(productData) {
+    // First check masterVariant availability (highest priority)
+    const masterVariant = productData.masterData?.current?.masterVariant;
+    if (masterVariant) {
+      // Check direct availability data from commercetools (REST API format)
+      if (masterVariant.availability?.availableQuantity !== undefined) {
+        const stockValue = masterVariant.availability.availableQuantity || 0;
+        return {
+          availableQuantity: stockValue,
+          isAvailable: stockValue > 0
+        };
+      }
+      
+      // Check custom attributes for stock information
+      if (masterVariant.attributes) {
+        const stockAttr = masterVariant.attributes.find(attr => 
+          attr.name === 'stock' || 
+          attr.name === 'quantity' || 
+          attr.name === 'availableQuantity' ||
+          attr.name === 'inventory' ||
+          attr.name === 'stockLevel' ||
+          attr.name === 'qty' ||
+          attr.name === 'qtyAvailable'
+        );
+        
+        if (stockAttr && stockAttr.value) {
+          const stockValue = parseInt(stockAttr.value) || 0;
+          return {
+            availableQuantity: stockValue,
+            isAvailable: stockValue > 0
+          };
+        }
+      }
+    }
+
+    // Then check all variants for availability
+    const variants = productData.masterData?.current?.variants || [];
+    for (const variant of variants) {
+      // Check direct availability data from commercetools (REST API format)
+      if (variant.availability?.availableQuantity !== undefined) {
+        const stockValue = variant.availability.availableQuantity || 0;
+        return {
+          availableQuantity: stockValue,
+          isAvailable: stockValue > 0
+        };
+      }
+      
+      // Check custom attributes for stock information
+      if (variant.attributes) {
+        const stockAttr = variant.attributes.find(attr => 
+          attr.name === 'stock' || 
+          attr.name === 'quantity' || 
+          attr.name === 'availableQuantity' ||
+          attr.name === 'inventory' ||
+          attr.name === 'stockLevel' ||
+          attr.name === 'qty' ||
+          attr.name === 'qtyAvailable'
+        );
+        
+        if (stockAttr && stockAttr.value) {
+          const stockValue = parseInt(stockAttr.value) || 0;
+          return {
+            availableQuantity: stockValue,
+            isAvailable: stockValue > 0
+          };
+        }
+      }
+    }
+
+    // Default to 0 quantity if no stock information found
+    return { availableQuantity: 0, isAvailable: false };
+  }
+
+  /**
+   * Build fulfillment information based on availability
+   */
+  buildFulfillmentInfo(availabilityInfo) {
+    const fulfillmentInfo = [];
+
+    // Add pickup-in-store if product is available
+    if (availabilityInfo.isAvailable) {
+      fulfillmentInfo.push({
+        type: 'pickup-in-store',
+        placeIds: ['store1', 'store2'] // These should be configured based on your store setup
+      });
+    }
+
+    // Add same-day-delivery if available and in stock
+    if (availabilityInfo.isAvailable && availabilityInfo.availableQuantity > 10) {
+      fulfillmentInfo.push({
+        type: 'same-day-delivery',
+        placeIds: ['store1', 'store2']
+      });
+    }
+
+    // Add delivery if product exists (even if out of stock)
+    fulfillmentInfo.push({
+      type: 'delivery',
+      placeIds: ['store1', 'store2']
+    });
+
+    return fulfillmentInfo;
+  }
+
+  /**
+   * Build product URI based on product data
+   */
+  buildProductUri(commercetoolsProduct) {
+    // Use environment variable for base URL if available
+    const baseUrl = process.env.PRODUCT_BASE_URL || 'https://your-store.com';
+    
+    // Get the SKU from the master variant
+    const variant = commercetoolsProduct.masterData?.current?.masterVariant || 
+                   commercetoolsProduct.masterData?.current?.variants?.[0];
+    const sku = variant?.sku || commercetoolsProduct.key || commercetoolsProduct.id;
+    
+    return `${baseUrl}/products/${sku}`;
+  }
+
   async importProduct(productData) {
     try {
-      console.log(`Importing product ${productData.id} to Vertex AI`);
-      
       const retailProduct = this.transformToRetailProduct(productData);
       
       // Use the same format as batch import for single product
@@ -232,7 +375,6 @@ class VertexService {
       
       const result = await this.makeVertexRequest('/products:import', 'POST', importRequest);
       
-      console.log(`Successfully imported product ${productData.id}`);
       return result;
     } catch (error) {
       console.error(`Failed to import product ${productData.id}:`, error);
@@ -242,9 +384,27 @@ class VertexService {
 
   async importProducts(productsData) {
     try {
-      console.log(`Importing ${productsData.length} products to Vertex AI`);
+      console.log(`🔄 Full Sync: Importing ${productsData.length} products to Vertex AI`);
       
       const retailProducts = productsData.map(product => this.transformToRetailProduct(product));
+      
+      // Log the complete Vertex AI payload for full sync
+      if (retailProducts.length > 0) {
+        console.log('📋 VERTEX AI FULL SYNC PAYLOAD:');
+        console.log('Total Products:', retailProducts.length);
+        console.log('Sample Product:', {
+          id: retailProducts[0].id,
+          title: retailProducts[0].title,
+          categories: retailProducts[0].categories,
+          availableQuantity: retailProducts[0].availableQuantity,
+          availability: retailProducts[0].availability,
+          priceInfo: retailProducts[0].priceInfo,
+          attributes: retailProducts[0].attributes
+        });
+        console.log('--- COMPLETE VERTEX AI PAYLOAD ---');
+        console.log(JSON.stringify(retailProducts, null, 2));
+        console.log('--- END VERTEX AI PAYLOAD ---');
+      }
       
       // Vertex AI Retail API expects a message format for batch imports
       const importRequest = {
@@ -257,21 +417,17 @@ class VertexService {
       
       const result = await this.makeVertexRequest('/products:import', 'POST', importRequest);
       
-      console.log(`Successfully imported ${productsData.length} products`);
+      console.log(`✅ Full Sync: Successfully imported ${productsData.length} products to Vertex AI`);
       return result;
     } catch (error) {
-      console.error('Failed to import products:', error);
+      console.error('❌ Full Sync: Failed to import products to Vertex AI:', error);
       throw error;
     }
   }
 
   async deleteProductFromVertex(productId) {
     try {
-      console.log(`Deleting product ${productId} from Vertex AI`);
-      
       const result = await this.makeVertexRequest(`/products/${productId}`, 'DELETE');
-      
-      console.log(`Successfully deleted product ${productId}`);
       return result;
     } catch (error) {
       console.error(`Failed to delete product ${productId}:`, error);
@@ -281,8 +437,6 @@ class VertexService {
 
   async createCatalog() {
     try {
-      console.log('Creating catalog in Vertex AI');
-      
       const result = await this.makeVertexRequest('', 'POST', {
         displayName: 'Commercetools Products Catalog',
         productLevelConfig: {
@@ -290,7 +444,6 @@ class VertexService {
         }
       });
       
-      console.log('Successfully created catalog');
       return result;
     } catch (error) {
       console.error('Failed to create catalog:', error);
