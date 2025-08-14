@@ -140,9 +140,6 @@ class VertexService {
     
     // Extract availability information from the entire product
     const availabilityInfo = this.extractAvailabilityFromCommercetools(commercetoolsProduct);
-    
-    // Build fulfillment info based on availability
-    const fulfillmentInfo = this.buildFulfillmentInfo(availabilityInfo);
 
     // Transform to Vertex AI Retail API format
     const product = {
@@ -160,10 +157,7 @@ class VertexService {
       })) || []
     };
 
-    // Add fulfillmentInfo only if it exists
-    if (fulfillmentInfo && fulfillmentInfo.length > 0) {
-      product.fulfillmentInfo = fulfillmentInfo;
-    }
+
 
     // Add priceInfo only if pricing information exists
     if (pricingInfo) {
@@ -314,36 +308,7 @@ class VertexService {
     return { availableQuantity: 0, isAvailable: false };
   }
 
-  /**
-   * Build fulfillment information based on availability
-   */
-  buildFulfillmentInfo(availabilityInfo) {
-    const fulfillmentInfo = [];
 
-    // Add pickup-in-store if product is available
-    if (availabilityInfo.isAvailable) {
-      fulfillmentInfo.push({
-        type: 'pickup-in-store',
-        placeIds: ['store1', 'store2'] // These should be configured based on your store setup
-      });
-    }
-
-    // Add same-day-delivery if available and in stock
-    if (availabilityInfo.isAvailable && availabilityInfo.availableQuantity > 10) {
-      fulfillmentInfo.push({
-        type: 'same-day-delivery',
-        placeIds: ['store1', 'store2']
-      });
-    }
-
-    // Add delivery if product exists (even if out of stock)
-    fulfillmentInfo.push({
-      type: 'delivery',
-      placeIds: ['store1', 'store2']
-    });
-
-    return fulfillmentInfo;
-  }
 
   /**
    * Build product URI based on product data
@@ -370,12 +335,24 @@ class VertexService {
           productInlineSource: {
             products: [retailProduct]
           }
-        }
+        },
+        reconciliationMode: 'INCREMENTAL'
       };
       
-      const result = await this.makeVertexRequest('/products:import', 'POST', importRequest);
+      const operation = await this.makeVertexRequest('/products:import', 'POST', importRequest);
       
-      return result;
+      // Poll the operation to check for completion and errors
+      const operationResult = await this.pollOperation(operation.name);
+      
+      if (!operationResult.success) {
+        throw new Error(`Import operation failed: ${operationResult.error}`);
+      }
+      
+      return {
+        success: true,
+        operation: operation.name,
+        timestamp: new Date().toISOString()
+      };
     } catch (error) {
       console.error(`Failed to import product ${productData.id}:`, error);
       throw error;
@@ -412,13 +389,25 @@ class VertexService {
           productInlineSource: {
             products: retailProducts
           }
-        }
+        },
+        reconciliationMode: 'INCREMENTAL'
       };
       
-      const result = await this.makeVertexRequest('/products:import', 'POST', importRequest);
+      const operation = await this.makeVertexRequest('/products:import', 'POST', importRequest);
+      
+      // Poll the operation to check for completion and errors
+      const operationResult = await this.pollOperation(operation.name);
+      
+      if (!operationResult.success) {
+        throw new Error(`Import operation failed: ${operationResult.error}`);
+      }
       
       console.log(`✅ Full Sync: Successfully imported ${productsData.length} products to Vertex AI`);
-      return result;
+      return {
+        success: true,
+        operation: operation.name,
+        timestamp: new Date().toISOString()
+      };
     } catch (error) {
       console.error('❌ Full Sync: Failed to import products to Vertex AI:', error);
       throw error;
@@ -461,6 +450,76 @@ class VertexService {
 
   async batchUpsertProducts(productsData) {
     return await this.importProducts(productsData);
+  }
+
+  async pollOperation(operationName) {
+    const maxAttempts = 30; // 5 minutes with 10-second intervals
+    let attempts = 0;
+    
+    while (attempts < maxAttempts) {
+      try {
+        const accessToken = await this.getAccessToken();
+        const response = await fetch(`https://retail.googleapis.com/v2/${operationName}`, {
+          method: 'GET',
+          headers: {
+            'Authorization': `Bearer ${accessToken}`,
+            'Content-Type': 'application/json',
+          },
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to check operation status: ${response.status} ${response.statusText}`);
+        }
+
+        const operation = await response.json();
+        
+        if (operation.done) {
+          // Check for errors in the operation
+          if (operation.error) {
+            return {
+              success: false,
+              error: `Operation failed: ${operation.error.message || JSON.stringify(operation.error)}`
+            };
+          }
+          
+          // Check for import errors in the response
+          if (operation.response && operation.response.errorSamples && operation.response.errorSamples.length > 0) {
+            const errorDetails = operation.response.errorSamples.map(err => 
+              `${err.code}: ${err.message}`
+            ).join('; ');
+            
+            return {
+              success: false,
+              error: `Import errors: ${errorDetails}`
+            };
+          }
+          
+          // Check failure count in metadata
+          if (operation.metadata && operation.metadata.failureCount && parseInt(operation.metadata.failureCount) > 0) {
+            return {
+              success: false,
+              error: `Import failed with ${operation.metadata.failureCount} failures`
+            };
+          }
+          
+          return { success: true };
+        }
+        
+        // Wait before next poll
+        await new Promise(resolve => setTimeout(resolve, 10000)); // 10 seconds
+        attempts++;
+        
+      } catch (error) {
+        console.error('Error polling operation:', error);
+        attempts++;
+        await new Promise(resolve => setTimeout(resolve, 10000));
+      }
+    }
+    
+    return {
+      success: false,
+      error: 'Operation timed out after 5 minutes'
+    };
   }
 }
 
